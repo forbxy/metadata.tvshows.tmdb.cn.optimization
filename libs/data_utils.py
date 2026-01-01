@@ -73,6 +73,61 @@ UrlParseResult = namedtuple(
     'UrlParseResult', ['provider', 'show_id', 'ep_grouping'])
 
 
+def get_pinyin_initials(text):
+    # TV Shows scraper doesn't have direct access to the daemon client code
+    # We need to implement a simple socket client here or import from a shared location
+    # Since we can't easily share code between addons, we'll implement a minimal client here
+    if not text:
+        return ""
+    
+    try:
+        # Check if daemon port is available
+        import xbmcgui
+        port_prop = xbmcgui.Window(10000).getProperty('TMDB_TV_OPTIMIZATION_SERVICE_PORT')
+        if not port_prop:
+            # Try to start daemon via RunScript? 
+            # The movie scraper daemon is shared, so we can try to wake it up
+            import xbmc
+            import time
+            addon_id = 'metadata.tvshows.tmdb.cn.optimization'
+            script_path = 'special://home/addons/{}/daemon.py'.format(addon_id)
+            xbmc.executebuiltin('RunScript({})'.format(script_path))
+            
+            # Wait for port to be available (max 5 seconds)
+            for _ in range(50):
+                if xbmcgui.Window(10000).getProperty('TMDB_TV_OPTIMIZATION_SERVICE_PORT'):
+                    port_prop = xbmcgui.Window(10000).getProperty('TMDB_TV_OPTIMIZATION_SERVICE_PORT')
+                    break
+                time.sleep(0.1)
+            
+            if not port_prop:
+                return "" # Still not available
+
+        service_port = int(port_prop)
+        payload = {'pinyin': text}
+        
+        import socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
+            s.connect(('127.0.0.1', service_port))
+            s.sendall(json.dumps(payload).encode('utf-8'))
+            
+            data = b""
+            while True:
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+            
+            if not data:
+                return ""
+                
+            response = json.loads(data)
+            return response.get('result', "")
+    except:
+        return ""
+
+
 def _clean_plot(plot):
     # type: (Text) -> Text
     """Replace HTML tags with Kodi skin tags"""
@@ -245,6 +300,22 @@ def add_main_show_info(list_item, show_info, full_info=True):
         showname = original_name
     else:
         showname = show_info['name']
+
+    # Generate Pinyin Initials
+    pinyin_initials = get_pinyin_initials(showname)
+    
+    # Decide whether to write initials based on settings
+    if pinyin_initials:
+        if SOURCE_SETTINGS.get("WRITE_INITIALS", True):
+            sort_title = "{}|{}".format(pinyin_initials, showname)
+            vtag.setSortTitle(sort_title)
+
+        if SOURCE_SETTINGS.get("WRITE_INITIALS_ORIGINALTITLE", True):
+            if original_name:
+                original_name = "{}|{}|{}".format(pinyin_initials, showname, original_name)
+            else:
+                original_name = "{}|{}".format(pinyin_initials, showname)
+
     plot = _clean_plot(safe_get(show_info, 'overview', ''))
     vtag.setTitle(showname)
     vtag.setOriginalTitle(original_name)
@@ -262,9 +333,104 @@ def add_main_show_info(list_item, show_info, full_info=True):
     if full_info:
         vtag.setTvShowStatus(safe_get(show_info, 'status', ''))
         vtag.setGenres(_get_names(show_info.get('genres', [])))
+        
+        # 处理 Tags (关键词 + 国家)
+        tags = []
         if SOURCE_SETTINGS["SAVETAGS"]:
-            vtag.setTags(_get_names(show_info.get(
-                'keywords', {}).get('results', [])))
+            tags.extend(_get_names(show_info.get('keywords', {}).get('results', [])))
+        
+        # 将 origin_country 转换为英文全名标签 (与筛选器 library.py 保持一致)
+        origin_countries = show_info.get('origin_country', [])
+        # 国家代码映射表 (ISO 3166-1 alpha-2 -> English Full Name)
+        # 参考 library.py 中的映射逻辑
+        COUNTRY_MAP = {
+            'CN': 'China',          # 内地
+            'HK': 'Hong Kong',      # 中国香港
+            'TW': 'Taiwan',         # 中国台湾
+            'US': 'United States',  # 美国
+            'JP': 'Japan',          # 日本
+            'KR': 'South Korea',    # 韩国
+            'TH': 'Thailand',       # 泰国
+            'IN': 'India',          # 印度
+            'GB': 'United Kingdom', # 英国
+            'FR': 'France',         # 法国
+            'DE': 'Germany',        # 德国
+            'RU': 'Russia',         # 俄罗斯
+            'CA': 'Canada',         # 加拿大
+            # 补充常见国家
+            'AU': 'Australia',      # 澳大利亚
+            'IT': 'Italy',          # 意大利
+            'ES': 'Spain',          # 西班牙
+            'BR': 'Brazil',         # 巴西
+            'MX': 'Mexico',         # 墨西哥
+            'SE': 'Sweden',         # 瑞典
+            'NO': 'Norway',         # 挪威
+            'DK': 'Denmark',        # 丹麦
+            'NL': 'Netherlands',    # 荷兰
+            'PL': 'Poland',         # 波兰
+            'TR': 'Turkey',         # 土耳其
+            'ID': 'Indonesia',      # 印度尼西亚
+            'PH': 'Philippines',    # 菲律宾
+            'SG': 'Singapore',      # 新加坡
+            'MY': 'Malaysia',       # 马来西亚
+            'VN': 'Vietnam',        # 越南
+            'ZA': 'South Africa',   # 南非
+            'NZ': 'New Zealand',    # 新西兰
+            'IE': 'Ireland',        # 爱尔兰
+            'BE': 'Belgium',        # 比利时
+            'CH': 'Switzerland',    # 瑞士
+            'AT': 'Austria',        # 奥地利
+            'FI': 'Finland',        # 芬兰
+            'PT': 'Portugal',       # 葡萄牙
+            'GR': 'Greece',         # 希腊
+            'IL': 'Israel',         # 以色列
+            'AR': 'Argentina',      # 阿根廷
+            'CL': 'Chile',          # 智利
+            'CO': 'Colombia',       # 哥伦比亚
+            'UA': 'Ukraine',        # 乌克兰
+            'CZ': 'Czech Republic', # 捷克
+            'HU': 'Hungary',        # 匈牙利
+            'RO': 'Romania',        # 罗马尼亚
+            # 更多国家补充
+            'AF': 'Afghanistan', 'AL': 'Albania', 'DZ': 'Algeria', 'AD': 'Andorra', 'AO': 'Angola',
+            'AG': 'Antigua and Barbuda', 'AM': 'Armenia', 'AZ': 'Azerbaijan', 'BS': 'Bahamas', 'BH': 'Bahrain',
+            'BD': 'Bangladesh', 'BB': 'Barbados', 'BY': 'Belarus', 'BZ': 'Belize', 'BJ': 'Benin',
+            'BT': 'Bhutan', 'BO': 'Bolivia', 'BA': 'Bosnia and Herzegovina', 'BW': 'Botswana', 'BN': 'Brunei Darussalam',
+            'BG': 'Bulgaria', 'BF': 'Burkina Faso', 'BI': 'Burundi', 'KH': 'Cambodia', 'CM': 'Cameroon',
+            'CV': 'Cape Verde', 'CF': 'Central African Republic', 'TD': 'Chad', 'KM': 'Comoros', 'CG': 'Congo',
+            'CD': 'Democratic Republic of the Congo', 'CR': 'Costa Rica', 'CI': 'Cote D\'Ivoire', 'HR': 'Croatia', 'CU': 'Cuba',
+            'CY': 'Cyprus', 'DJ': 'Djibouti', 'DM': 'Dominica', 'DO': 'Dominican Republic', 'EC': 'Ecuador',
+            'EG': 'Egypt', 'SV': 'El Salvador', 'GQ': 'Equatorial Guinea', 'ER': 'Eritrea', 'EE': 'Estonia',
+            'ET': 'Ethiopia', 'FJ': 'Fiji', 'GA': 'Gabon', 'GM': 'Gambia', 'GE': 'Georgia',
+            'GH': 'Ghana', 'GD': 'Grenada', 'GT': 'Guatemala', 'GN': 'Guinea', 'GW': 'Guinea-Bissau',
+            'GY': 'Guyana', 'HT': 'Haiti', 'HN': 'Honduras', 'IS': 'Iceland', 'IR': 'Iran',
+            'IQ': 'Iraq', 'JM': 'Jamaica', 'JO': 'Jordan', 'KZ': 'Kazakhstan', 'KE': 'Kenya',
+            'KI': 'Kiribati', 'KP': 'North Korea', 'KW': 'Kuwait', 'KG': 'Kyrgyzstan', 'LA': 'Laos',
+            'LV': 'Latvia', 'LB': 'Lebanon', 'LS': 'Lesotho', 'LR': 'Liberia', 'LY': 'Libya',
+            'LI': 'Liechtenstein', 'LT': 'Lithuania', 'LU': 'Luxembourg', 'MK': 'Macedonia', 'MG': 'Madagascar',
+            'MW': 'Malawi', 'MV': 'Maldives', 'ML': 'Mali', 'MT': 'Malta', 'MH': 'Marshall Islands',
+            'MR': 'Mauritania', 'MU': 'Mauritius', 'FM': 'Micronesia', 'MD': 'Moldova', 'MC': 'Monaco',
+            'MN': 'Mongolia', 'ME': 'Montenegro', 'MA': 'Morocco', 'MZ': 'Mozambique', 'MM': 'Myanmar',
+            'NA': 'Namibia', 'NR': 'Nauru', 'NP': 'Nepal', 'NI': 'Nicaragua', 'NE': 'Niger',
+            'NG': 'Nigeria', 'OM': 'Oman', 'PK': 'Pakistan', 'PW': 'Palau', 'PA': 'Panama',
+            'PG': 'Papua New Guinea', 'PY': 'Paraguay', 'PE': 'Peru', 'QA': 'Qatar', 'RW': 'Rwanda',
+            'KN': 'Saint Kitts and Nevis', 'LC': 'Saint Lucia', 'VC': 'Saint Vincent and the Grenadines', 'WS': 'Samoa', 'SM': 'San Marino',
+            'ST': 'Sao Tome and Principe', 'SA': 'Saudi Arabia', 'SN': 'Senegal', 'RS': 'Serbia', 'SC': 'Seychelles',
+            'SL': 'Sierra Leone', 'SK': 'Slovakia', 'SI': 'Slovenia', 'SB': 'Solomon Islands', 'SO': 'Somalia',
+            'LK': 'Sri Lanka', 'SD': 'Sudan', 'SR': 'Suriname', 'SZ': 'Swaziland', 'SY': 'Syria',
+            'TJ': 'Tajikistan', 'TZ': 'Tanzania', 'TL': 'Timor-Leste', 'TG': 'Togo', 'TO': 'Tonga',
+            'TT': 'Trinidad and Tobago', 'TN': 'Tunisia', 'TM': 'Turkmenistan', 'TV': 'Tuvalu', 'UG': 'Uganda',
+            'AE': 'United Arab Emirates', 'UY': 'Uruguay', 'UZ': 'Uzbekistan', 'VU': 'Vanuatu', 'VE': 'Venezuela',
+            'YE': 'Yemen', 'ZM': 'Zambia', 'ZW': 'Zimbabwe'
+        }
+        for code in origin_countries:
+            if code in COUNTRY_MAP:
+                tags.append(COUNTRY_MAP[code])
+            # else: tags.append(code) # 可选：保留未映射的代码
+            
+        if tags:
+            vtag.setTags(tags)
+
         networks = show_info.get('networks', [])
         if networks:
             network = networks[0]

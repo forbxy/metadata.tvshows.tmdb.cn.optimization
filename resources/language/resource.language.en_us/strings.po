@@ -208,3 +208,11 @@ msgstr "IMDb Base URL"
 msgctxt "#32010"
 msgid "Trakt TV Base URL"
 msgstr "Trakt TV Base URL"
+
+msgctxt "#30021"
+msgid "Write Pinyin Initials to SortTitle"
+msgstr ""
+
+msgctxt "#30022"
+msgid "Write Pinyin Initials to OriginalTitle"
+msgstr ""

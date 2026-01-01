@@ -147,7 +147,15 @@
 						<heading>30008</heading>
 					</control>
 				</setting>
-				<setting id="tmdbcertcountry" type="string" label="30001" help="">
+				<setting id="write_initials" type="boolean" label="30021" help="">
+					<level>0</level>
+					<default>true</default>
+					<control type="toggle"/>
+				</setting>				<setting id="write_initials_originaltitle" type="boolean" label="30022" help="">
+					<level>0</level>
+					<default>true</default>
+					<control type="toggle" />
+				</setting>				<setting id="tmdbcertcountry" type="string" label="30001" help="">
 					<level>0</level>
 					<default>us</default>
 					<constraints>
@@ -232,7 +240,7 @@
 				</setting>
 				<setting id="studio_country" type="boolean" label="30006" help="">
 					<level>0</level>
-					<default>true</default>
+					<default>false</default>
 					<control type="toggle"/>
 				</setting>
 				<setting id="enab_trailer" type="boolean" label="30305" help="">

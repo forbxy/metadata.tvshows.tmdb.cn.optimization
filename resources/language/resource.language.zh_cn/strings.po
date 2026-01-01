@@ -209,3 +209,10 @@ msgctxt "#32010"
 msgid "Trakt TV Base URL"
 msgstr "trakt tv基础url"
 
+msgctxt "#30021"
+msgid "Write Pinyin Initials to SortTitle"
+msgstr "将片名拼音首字母写入数据库排序名字段"
+
+msgctxt "#30022"
+msgid "Write Pinyin Initials to OriginalTitle"
+msgstr "将片名拼音首字母写入数据库原始片名字段"

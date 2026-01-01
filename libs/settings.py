@@ -127,6 +127,9 @@ def getSourceSettings():
             'certprefix', addon.getSettingString('certprefix'))
     else:
         settings["CERT_PREFIX"] = ''
+    # Write pinyin initials to SortTitle and OriginalTitle (controlled by setting)
+    settings["WRITE_INITIALS"] = source_settings.get('write_initials', addon.getSettingBool('write_initials'))
+    settings["WRITE_INITIALS_ORIGINALTITLE"] = source_settings.get('write_initials_originaltitle', addon.getSettingBool('write_initials_originaltitle'))
     primary_rating = source_settings.get(
         'ratings', addon.getSettingString('ratings')).lower()
     RATING_TYPES = [primary_rating]

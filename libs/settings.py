@@ -54,7 +54,9 @@ def _get_configuration():
     base = addon.getSetting('tmdb_api_base_url')
     if not base:
         base = 'api.tmdb.org'
-    url = 'https://' + base + '/3/configuration'
+    if not base.startswith('http'):
+        base = 'https://' + base
+    url = base + '/3/configuration'
     return api_utils.load_info(url, params={'api_key': TMDB_CLOWNCAR}, verboselog=addon.getSettingBool('verboselog'))
 
 

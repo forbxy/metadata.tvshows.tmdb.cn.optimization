@@ -137,11 +137,12 @@ def _clean_plot(plot):
     return plot
 
 
-def _set_cast(cast_info, vtag):
-    # type: (InfoType, ListItem) -> ListItem
+def _set_cast(cast_info, vtag, crew_info=None):
+    # type: (InfoType, ListItem, Optional[List]) -> ListItem
     """Save cast info to list item"""
     imagerooturl, previewrooturl = settings.loadBaseUrls()
     cast = []
+    cast_names = set()
     for item in cast_info:
         actor = {
             'name': item['name'],
@@ -152,6 +153,15 @@ def _set_cast(cast_info, vtag):
         if safe_get(item, 'profile_path') is not None:
             thumb = imagerooturl + item['profile_path']
         cast.append(Actor(actor['name'], actor['role'], actor['order'], thumb))
+        cast_names.add(item['name'])
+    # Append directors from crew to cast so their thumbnails get written to actor/art tables
+    if crew_info:
+        next_order = max((item.get('order', 0) for item in cast_info), default=-1) + 1
+        for item in crew_info:
+            if item.get('job') == 'Director' and item.get('name') and item['name'] not in cast_names and safe_get(item, 'profile_path') is not None:
+                cast.append(Actor(item['name'], 'Director', next_order, imagerooturl + item['profile_path']))
+                cast_names.add(item['name'])
+                next_order += 1
     vtag.setCast(cast)
 
 
@@ -467,7 +477,8 @@ def add_main_show_info(list_item, show_info, full_info=True):
                 vtag.setTrailer(trailer)
         list_item = set_show_artwork(show_info, list_item)
         _add_season_info(show_info, vtag)
-        _set_cast(show_info['credits']['cast'], vtag)
+        _set_cast(show_info['credits']['cast'], vtag,
+                  crew_info=show_info.get('credits', {}).get('crew', []))
         _set_rating(show_info, vtag)
     else:
         image = show_info.get('poster_path', '')
@@ -505,7 +516,8 @@ def add_episode_info(list_item, episode_info, full_info=True):
             videostream = VideoStreamDetail(duration=int(duration)*60)
             vtag.addVideoStream(videostream)
         _set_cast(
-            episode_info['season_cast'] + episode_info['credits']['guest_stars'], vtag)
+            episode_info['season_cast'] + episode_info['credits']['guest_stars'], vtag,
+            crew_info=episode_info.get('credits', {}).get('crew', []))
         ext_ids = {'tmdb_id': episode_info['id']}
         ext_ids.update(episode_info.get('external_ids', {}))
         _set_unique_ids(ext_ids, vtag)

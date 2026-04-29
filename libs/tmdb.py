@@ -289,14 +289,14 @@ def load_show_info(show_id, ep_grouping=None, named_seasons=None):
                     break
             # end work around
             season_info['images'] = _sort_image_types(
-                season_info.get('images', {}))
+                season_info.get('images', {}), season_info.get('poster_path'))
             season_map[str(season.get('season_number', 0))] = season_info
         # ----------------------------------
         
         show_info = load_episode_list(show_info, season_map, ep_grouping)
         show_info['ratings'] = load_ratings(show_info)
         show_info = load_fanarttv_art(show_info)
-        show_info['images'] = _sort_image_types(show_info.get('images', {}))
+        show_info['images'] = _sort_image_types(show_info.get('images', {}), show_info.get('poster_path'))
         show_info = trim_artwork(show_info)
         cast_check = []
         cast = []
@@ -370,7 +370,7 @@ def load_episode_info(show_id, episode_id):
                 if bad_return_name:
                     ep_return['name'] = ep_return_backup.get(
                         'name', 'Episode ' + str(episode_info['episode_number']))
-        ep_return['images'] = _sort_image_types(ep_return.get('images', {}))
+        ep_return['images'] = _sort_image_types(ep_return.get('images', {}), still_path=ep_return.get('still_path'))
         ep_return['season_number'] = episode_info['season_number']
         ep_return['episode_number'] = episode_info['episode_number']
         ep_return['org_seasonnum'] = episode_info['org_seasonnum']
@@ -546,16 +546,34 @@ def trim_artwork(show_info):
     return show_info
 
 
-def _sort_image_types(imagelist):
+def _sort_image_types(imagelist, poster_path=None, still_path=None):
     # type: (Dict) -> Dict
     """
     sort the images by language
 
     :param imagelist:
+    :param poster_path: optional default poster path from TMDB details endpoint
+    :param still_path: optional default still path from TMDB episode endpoint
     :return: imagelist
     """
     for image_type, images in imagelist.items():
         imagelist[image_type] = _image_sort(images, image_type)
+    # Ensure TMDB's default poster (selected by language) is first
+    if poster_path and 'posters' in imagelist:
+        posters = imagelist['posters']
+        for i, p in enumerate(posters):
+            if p.get('file_path') == poster_path:
+                if i != 0:
+                    posters.insert(0, posters.pop(i))
+                break
+    # Ensure TMDB's default still (selected by language) is first
+    if still_path and 'stills' in imagelist:
+        stills = imagelist['stills']
+        for i, s in enumerate(stills):
+            if s.get('file_path') == still_path:
+                if i != 0:
+                    stills.insert(0, stills.pop(i))
+                break
     return imagelist
 
 
